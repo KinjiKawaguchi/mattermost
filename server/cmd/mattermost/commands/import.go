@@ -93,7 +93,7 @@ func bulkImportCmdF(command *cobra.Command, args []string) error {
 
 	CommandPrettyPrintln("")
 
-	if lineNumber, err := a.BulkImportWithPath(rctx, fileReader, nil, true, !apply, workers, importPath); err != nil {
+	if lineNumber, err := a.BulkImportWithPath(rctx, fileReader, nil, !apply, false, workers, importPath); err != nil {
 		CommandPrintErrorln(err.Error())
 		if lineNumber != 0 {
 			CommandPrintErrorln(fmt.Sprintf("Error occurred on data file line %v", lineNumber))
