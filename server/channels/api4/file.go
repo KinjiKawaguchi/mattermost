@@ -681,7 +681,10 @@ func getFileThumbnail(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 	defer fileReader.Close()
 
-	web.WriteFileResponse(info.Name, ThumbnailImageType, 0, time.Unix(0, info.UpdateAt*int64(1000*1000)), *c.App.Config().ServiceSettings.WebserverMode, fileReader, forceDownload, w, r)
+	if appErr := writeImageFileResponse(w, r, info, ThumbnailImageType, *c.App.Config().ServiceSettings.WebserverMode, forceDownload, fileReader); appErr != nil {
+		c.Err = appErr
+		return
+	}
 
 	auditRec := c.MakeAuditRecord(model.AuditEventGetFileThumbnail, model.AuditStatusSuccess)
 	defer c.LogAuditRec(auditRec)
@@ -689,6 +692,27 @@ func getFileThumbnail(c *Context, w http.ResponseWriter, r *http.Request) {
 	if !isMember {
 		model.AddEventParameterToAuditRec(auditRec, "non_channel_member_access", true)
 	}
+}
+
+// writeImageFileResponse writes the stored thumbnail or preview in fileReader
+// as the response. If the stored object is missing, it returns a 404 error and
+// writes nothing.
+//
+// Some file stores, S3 among them, open an object lazily, so a missing object
+// is only noticed on the first Seek. http.ServeContent makes that Seek itself
+// and answers 500 when it fails. Seeking here first turns that into a 404, as
+// the stores that fail when opening already do.
+func writeImageFileResponse(w http.ResponseWriter, r *http.Request, info *model.FileInfo, contentType, webserverMode string, forceDownload bool, fileReader io.ReadSeeker) *model.AppError {
+	_, err := fileReader.Seek(0, io.SeekEnd)
+	if err == nil {
+		_, err = fileReader.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		return model.NewAppError("writeImageFileResponse", "api.file.file_reader.app_error", nil, "file_id="+info.Id, http.StatusNotFound).Wrap(err)
+	}
+
+	web.WriteFileResponse(info.Name, contentType, 0, time.Unix(0, info.UpdateAt*int64(1000*1000)), webserverMode, fileReader, forceDownload, w, r)
+	return nil
 }
 
 func getFileLink(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -813,7 +837,10 @@ func getFilePreview(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 	defer fileReader.Close()
 
-	web.WriteFileResponse(info.Name, PreviewImageType, 0, time.Unix(0, info.UpdateAt*int64(1000*1000)), *c.App.Config().ServiceSettings.WebserverMode, fileReader, forceDownload, w, r)
+	if appErr := writeImageFileResponse(w, r, info, PreviewImageType, *c.App.Config().ServiceSettings.WebserverMode, forceDownload, fileReader); appErr != nil {
+		c.Err = appErr
+		return
+	}
 
 	auditRec := c.MakeAuditRecord(model.AuditEventGetFilePreview, model.AuditStatusSuccess)
 	defer c.LogAuditRec(auditRec)
