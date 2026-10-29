@@ -951,6 +951,16 @@ func (t *UploadFileTask) preprocessImage() *model.AppError {
 	return nil
 }
 
+// discardPreviewAndThumbnail clears the preview and thumbnail fields that
+// preprocessImage recorded from the image header. It is called when the image
+// can't be fully decoded, so no preview or thumbnail file gets written and the
+// stored FileInfo must not point at files that don't exist.
+func (t *UploadFileTask) discardPreviewAndThumbnail() {
+	t.fileinfo.HasPreviewImage = false
+	t.fileinfo.PreviewPath = ""
+	t.fileinfo.ThumbnailPath = ""
+}
+
 func (t *UploadFileTask) postprocessImage(file io.Reader) {
 	// don't try to process SVG files
 	if t.fileinfo.IsSvg() {
@@ -964,6 +974,7 @@ func (t *UploadFileTask) postprocessImage(file io.Reader) {
 		decoded, imgType, release, err = t.imgDecoder.DecodeMemBounded(file)
 		if err != nil {
 			t.Logger.Error("Unable to decode image", mlog.Err(err))
+			t.discardPreviewAndThumbnail()
 			return
 		}
 		defer release()
@@ -971,6 +982,7 @@ func (t *UploadFileTask) postprocessImage(file io.Reader) {
 
 	decoded = imaging.MakeImageUpright(decoded, t.imageOrientation)
 	if decoded == nil {
+		t.discardPreviewAndThumbnail()
 		return
 	}
 
